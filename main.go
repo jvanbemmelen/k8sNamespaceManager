@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
+	"github.com/ncw/swift"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -121,10 +122,11 @@ func CreateNamespaceHandler(c *gin.Context) {
 	// take the namespace parameter
 	namespace := c.Param("namespace")
 
-	message := ""
+	message := "Failed to create namespace"
 	if NameSpaceExists(namespace) {
 		message = "Namespace already exists"
 	} else {
+		createStatus := true
 		const (
 			ResourcePods           v1.ResourceName = "pods"
 			ResourceRequestsCPU    v1.ResourceName = "requests.cpu"
@@ -136,6 +138,8 @@ func CreateNamespaceHandler(c *gin.Context) {
 		kubernetesAPI, err := CreateKubernetesClient()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create Kubernetes client: %v\n", err)
+			createStatus = false
+
 		}
 
 		// create Namespace
@@ -143,6 +147,7 @@ func CreateNamespaceHandler(c *gin.Context) {
 		_, err = kubernetesAPI.clientset.CoreV1().Namespaces().Create(namespaceConfiguration)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create Kubernetes namespace: %v\n", err)
+			createStatus = false
 		}
 
 		// create ResourceQuota
@@ -156,24 +161,26 @@ func CreateNamespaceHandler(c *gin.Context) {
 		_, err = kubernetesAPI.clientset.CoreV1().ResourceQuotas(namespace).Create(resourceQuotaConfiguration)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create Kubernetes resourceQuota: %v\n", err)
+			createStatus = false
 		}
-		message = "Namespace created"
-	}
 
-	// create yaml file to store configuration
-	namespaceTemplate, err := ioutil.ReadFile("namespaceTemplate.yaml")
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to open template file: %v\n", err)
+		_, err = StoreNamespaceConfigInSwift(namespace)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to store Kubernetes configuration in Swift: %v\n", err)
+			createStatus = false
+		}
+
+		if createStatus {
+			message = "Namespace created successfully"
+		}
 	}
-	namespaceYaml := strings.Replace(string(namespaceTemplate), "namespaceName", namespace, -1)
-	print(namespaceYaml)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": message,
 	})
 }
 
-// StatusNamespaceHandler creates a namespace with the default resource quota
+// StatusNamespaceHandler returns the status and usage of a namespace
 func StatusNamespaceHandler(c *gin.Context) {
 	c.Header("Content-Type", "application/json")
 
@@ -202,4 +209,40 @@ func StatusNamespaceHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"message": message,
 	})
+}
+
+// StoreNamespaceConfigInSwift creates Kubernetes namespace and resourcequota
+// configuration and stores it in Openstack's swift
+func StoreNamespaceConfigInSwift(namespace string) (status string, err error) {
+	// create yaml file
+	namespaceTemplate, err := ioutil.ReadFile("namespaceTemplate.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to open template file: %v\n", err)
+		return "Failed", err
+	}
+	namespaceYaml := strings.Replace(string(namespaceTemplate), "namespaceName", namespace, -1)
+
+	// create the connection
+	c := swift.Connection{
+		UserName: "test:tester",
+		ApiKey:   "testing",
+		AuthUrl:  "http://127.0.0.1:12345/auth/v1.0",
+	}
+	// authenticate
+	authenciationErr := c.Authenticate()
+	if authenciationErr != nil {
+		fmt.Fprintf(os.Stderr, "Failed to log into Swift: %v\n", authenciationErr)
+		return "Failed", err
+	}
+
+	containerName := "swift"
+	objectName := namespace + "-namespace.yaml"
+
+	err = c.ObjectPutString(containerName, objectName, namespaceYaml, "text/plain")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to open Swift writer: %v\n", err)
+		return "Failed", err
+	}
+
+	return "Configuration stored in Swift", nil
 }
