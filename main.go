@@ -224,9 +224,9 @@ func StoreNamespaceConfigInSwift(namespace string) (status string, err error) {
 
 	// create the connection
 	c := swift.Connection{
-		UserName: "test:tester",
-		ApiKey:   "testing",
-		AuthUrl:  "http://127.0.0.1:12345/auth/v1.0",
+		UserName: os.Getenv("SWIFT_USER_NAME"),
+		ApiKey:   os.Getenv("SWIFT_API_KEY"),
+		AuthUrl:  os.Getenv("SWIFT_AUTH_URL"),
 	}
 	// authenticate
 	authenciationErr := c.Authenticate()
@@ -235,10 +235,10 @@ func StoreNamespaceConfigInSwift(namespace string) (status string, err error) {
 		return "Failed", err
 	}
 
-	containerName := "swift"
+	containerName := os.Getenv("SWIFT_CONTAINER_NAME")
 	objectName := namespace + "-namespace.yaml"
 
-	err = c.ObjectPutString(containerName, objectName, namespaceYaml, "text/plain")
+	err = c.ObjectPutString(containerName, objectName, namespaceYaml, "text/yaml")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to open Swift writer: %v\n", err)
 		return "Failed", err
