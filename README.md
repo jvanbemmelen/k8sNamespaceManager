@@ -31,7 +31,7 @@ Missing:
 - k8s cronjob that takes objects from swift and stores them in github
 
 
-##Usage
+## Usage
 Create namespace test1:
 ```
 curl -XPOST http://localhost:3000/api/v1/create/test1
@@ -54,7 +54,7 @@ docker run -ti -v $HOME/.kube:/.kube/ -v $HOME/.minikube/:$HOME/.minikube/ \
 If you do not have access to a Swift cluster, try [this](https://hub.docker.com/r/morrisjobke/docker-swift-onlyone/) for Swift in a container.
 
 
-###Environment variables:
+### Environment variables:
 
 Variable name | Description
 ------------- | -----------
