@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gin-gonic/contrib/static"
 	"github.com/gin-gonic/gin"
@@ -85,7 +87,7 @@ func NameSpaceExists(namespace string) bool {
 
 	_, err = kubernetesAPI.clientset.CoreV1().Namespaces().Get(namespace, getOptions)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to retriev namespace: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Failed to retrieve namespace: %v\n", err)
 		return false
 	}
 
@@ -120,7 +122,6 @@ func CreateNamespaceHandler(c *gin.Context) {
 	namespace := c.Param("namespace")
 
 	message := ""
-
 	if NameSpaceExists(namespace) {
 		message = "Namespace already exists"
 	} else {
@@ -159,6 +160,14 @@ func CreateNamespaceHandler(c *gin.Context) {
 		message = "Namespace created"
 	}
 
+	// create yaml file to store configuration
+	namespaceTemplate, err := ioutil.ReadFile("namespaceTemplate.yaml")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to open template file: %v\n", err)
+	}
+	namespaceYaml := strings.Replace(string(namespaceTemplate), "namespaceName", namespace, -1)
+	print(namespaceYaml)
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": message,
 	})
@@ -183,12 +192,11 @@ func StatusNamespaceHandler(c *gin.Context) {
 
 		// get resourceQuota
 		getOptions := metav1.GetOptions{}
-		namespaceQuota := ""
-		namespaceQuota, err = kubernetesAPI.clientset.CoreV1().ResourceQuotas(namespace).Get(namespace, getOptions)
+		_, err = kubernetesAPI.clientset.CoreV1().ResourceQuotas(namespace).Get(namespace, getOptions)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to create Kubernetes resourceQuota: %v\n", err)
 		}
-		message = namespaceQuota
+		message = "Not yet implemented"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
